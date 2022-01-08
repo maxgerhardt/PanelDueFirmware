@@ -7,7 +7,7 @@ def create_paneldue_logo(source, target, env):
     output_path = join(output_dir, env.subst("$PIOENV"), "paneldue-logo.bin")
     splashscreen_path = join(env.subst(
         "$PROJECT_SRC_DIR"), "..", "SplashScreens", "SplashScreen-Duet3D-800x480.bin")
-    bin_path = str(source[0])
+    bin_path = str(target[0])
     print("Merging " + bin_path + " and " + splashscreen_path)
     print("Into " + output_path)
     # merge the two files in binary node
