@@ -130,11 +130,13 @@ else()
 	message(FATAL_ERROR "${DEVICE} is invalid. Please configure a device cmake -DDEVICE=v2-4.3|v2-5.0|v2-7.0|v2-7.0c|v3-4.3|v3-5.0|v3-7.0|v3-7.0c|5.0i|7.0i")
 endif()
 
+set( DEVICE_FLAGS "${DEVICE_FLAGS} -DDEVICE=${DEVICE}" )
+
 set( CMAKE_ASM_FLAGS "${BASIC_C_FLAGS} ${DEVICE_FLAGS} ${CMAKE_ASM_FLAGS}" )
 set( CMAKE_C_FLAGS "${BASIC_C_FLAGS} ${DEVICE_FLAGS} ${CMAKE_C_FLAGS}" )
 set( CMAKE_CXX_FLAGS "${BASIC_C_FLAGS} ${DEVICE_FLAGS} ${CMAKE_CXX_FLAGS}" )
 
-set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static --specs=nano.specs -Wl,--gc-sections -Wl,--fatal-warnings" )
+set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static --specs=nano.specs -Wl,--gc-sections -Wl,--fatal-warnings -Wl,--no-warn-rwx-segments" )
 
 message( "Project Device: " ${DEVICE} )
 message( "Project C_FLAGS: " ${CMAKE_C_FLAGS} )
@@ -180,6 +182,7 @@ target_sources( paneldue.elf PRIVATE
 	src/Icons/MiscIcons.cpp
 	src/Icons/NozzleIcons.cpp
 	src/Library/Misc.cpp
+	src/Library/Thumbnail.cpp
 	src/ObjectModel/Axis.cpp
 	src/ObjectModel/BedOrChamber.cpp
 	src/ObjectModel/Spindle.cpp
@@ -192,10 +195,13 @@ target_sources( paneldue.elf PRIVATE
 	src/UI/MessageLog.cpp
 	src/UI/Popup.cpp
 	src/UI/UserInterface.cpp
+	lib/base64/base64.c
 )
 
 
 target_include_directories( paneldue.elf PRIVATE
+	lib/base64
+	lib/qoi
 	src
 	src/ASF/common/boards
 	src/ASF/common/boards/user_board

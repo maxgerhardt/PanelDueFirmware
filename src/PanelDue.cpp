@@ -10,9 +10,11 @@
 #include "PanelDue.hpp"
 #include "asf.h"
 
-#include <cstring>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+
 
 #include <Hardware/Mem.hpp>
 #include <Hardware/UTFT.hpp>
@@ -35,23 +37,14 @@
 #include <ObjectModel/Axis.hpp>
 #include <ObjectModel/PrinterStatus.hpp>
 #include "ControlCommands.hpp"
+#include "Library/Thumbnail.hpp"
 
 extern uint16_t _esplash[];							// defined in linker script
 
 #define DEBUG	(0) // 0: off, 1: MessageLog, 2: Uart
+#include "Debug.hpp"
+
 #define DEBUG2	(0) // 0: off, 1: DebugField
-
-#if (DEBUG == 1)
-#define dbg(fmt, args...)		do { MessageLog::AppendMessageF("%s(%d): " fmt , __FUNCTION__, __LINE__, ##args); } while(0)
-
-#elif (DEBUG == 2)
-#define dbg(fmt, args...)		do { SerialIo::Dbg("%s(%d): " fmt, __FUNCTION__, __LINE__, ##args); } while(0)
-
-#else
-#define dbg(fmt, args...)		do {} while(0)
-
-#endif
-
 #if (DEBUG2)
 
 #define STRINGIFY(x)	#x
@@ -165,6 +158,38 @@ static bool initialized = false;
 static float pollIntervalMultiplier = 1.0;
 static uint32_t printerPollInterval = defaultPrinterPollInterval;
 
+static struct ThumbnailData thumbnailData;
+
+enum ThumbnailState {
+	Init = 0,
+	Header,
+	DataRequest,
+	DataWait,
+	Data
+};
+
+String<MaxFilnameLength> filenameCurrent;
+static struct ThumbnailContext {
+	enum ThumbnailState state;
+	struct Thumbnail thumbnail;
+	int16_t parseErr;
+	int32_t err;
+	uint32_t size;
+	uint32_t offset;
+	uint32_t next;
+
+	void Init()
+	{
+		state = ThumbnailState::Init;
+		ThumbnailInit(thumbnail);
+		parseErr = 0;
+		err = 0;
+		size = 0;
+		offset = 0;
+		next = 0;
+	};
+} thumbnailCurrent, thumbnailNew;
+
 static const ColourScheme *colours = &colourSchemes[0];
 
 static Alert currentAlert;
@@ -201,6 +226,17 @@ enum ReceivedDataEvent
 	rcvM36PrintTime,
 	rcvM36SimulatedTime,
 	rcvM36Size,
+	rcvM36ThumbnailsFormat,
+	rcvM36ThumbnailsHeight,
+	rcvM36ThumbnailsOffset,
+	rcvM36ThumbnailsSize,
+	rcvM36ThumbnailsWidth,
+
+	rcvM361ThumbnailData,
+	rcvM361ThumbnailErr,
+	rcvM361ThumbnailFilename,
+	rcvM361ThumbnailNext,
+	rcvM361ThumbnailOffset,
 
 	// Keys for M409 response
 	rcvKey,
@@ -258,6 +294,7 @@ enum ReceivedDataEvent
 	rcvMoveAxesHomed,
 	rcvMoveAxesLetter,
 	rcvMoveAxesMachinePosition,
+	rcvMoveAxesMax,
 	rcvMoveAxesUserPosition,
 	rcvMoveAxesVisible,
 	rcvMoveAxesWorkplaceOffsets,
@@ -307,6 +344,12 @@ enum ReceivedDataEvent
 	rcvStateMessageBoxSeq,
 	rcvStateMessageBoxTimeout,
 	rcvStateMessageBoxTitle,
+	rcvStateMessageBoxLimitMin,
+	rcvStateMessageBoxLimitMax,
+	rcvStateMessageBoxChoices,
+	rcvStateMessageBoxCancelButton,
+	rcvStateMessageBoxValueDefault,
+
 	rcvStateStatus,
 	rcvStateUptime,
 
@@ -367,6 +410,7 @@ static FieldTableEntry fieldTable[] =
 	{ rcvMoveAxesHomed,					"move:axes^:homed" },
 	{ rcvMoveAxesLetter,	 			"move:axes^:letter" },
 	{ rcvMoveAxesMachinePosition,		"move:axes^:machinePosition" },
+	{ rcvMoveAxesMax, 				"move:axes^:max" },
 	{ rcvMoveAxesUserPosition,			"move:axes^:userPosition" },
 	{ rcvMoveAxesVisible, 				"move:axes^:visible" },
 	{ rcvMoveAxesWorkplaceOffsets, 		"move:axes^:workplaceOffsets^" },
@@ -414,8 +458,14 @@ static FieldTableEntry fieldTable[] =
 	{ rcvStateMessageBoxMessage,		"state:messageBox:message" },
 	{ rcvStateMessageBoxMode,			"state:messageBox:mode" },
 	{ rcvStateMessageBoxSeq,			"state:messageBox:seq" },
-	{ rcvStateMessageBoxTimeout,		"state:messageBox:timeout" },
+	{ rcvStateMessageBoxTimeout,			"state:messageBox:timeout" },
 	{ rcvStateMessageBoxTitle,			"state:messageBox:title" },
+	{ rcvStateMessageBoxLimitMin,			"state:messageBox:min" },
+	{ rcvStateMessageBoxLimitMax,			"state:messageBox:max" },
+	{ rcvStateMessageBoxChoices,			"state:messageBox:choices^" },
+	{ rcvStateMessageBoxCancelButton,		"state:messageBox:cancelButton" },
+	{ rcvStateMessageBoxValueDefault,		"state:messageBox:default" },
+
 	{ rcvStateStatus,					"state:status" },
 	{ rcvStateUptime,					"state:upTime" },
 
@@ -446,6 +496,17 @@ static FieldTableEntry fieldTable[] =
 	{ rcvM36PrintTime,					"printTime" },
 	{ rcvM36SimulatedTime,				"simulatedTime" },
 	{ rcvM36Size,						"size" },
+	{ rcvM36ThumbnailsFormat,			"thumbnails^:format" },
+	{ rcvM36ThumbnailsHeight,			"thumbnails^:height" },
+	{ rcvM36ThumbnailsOffset,			"thumbnails^:offset" },
+	{ rcvM36ThumbnailsSize,				"thumbnails^:size" },
+	{ rcvM36ThumbnailsWidth,			"thumbnails^:width" },
+
+	{ rcvM361ThumbnailData,				"thumbnail:data" },
+	{ rcvM361ThumbnailErr,				"thumbnail:err" },
+	{ rcvM361ThumbnailFilename,			"thumbnail:fileName" },
+	{ rcvM361ThumbnailNext,				"thumbnail:next" },
+	{ rcvM361ThumbnailOffset,			"thumbnail:offset" },
 
 	// Push messages
 	{ rcvPushMessage,					"message" },
@@ -804,13 +865,13 @@ void SetBrightness(int percent)
 
 void CurrentAlertModeClear()
 {
-	currentAlert.mode = 0;
+	currentAlert.Reset();
 }
 
 static void ActivateScreensaver()
 {
-	if (currentAlert.mode == 2 ||
-	    currentAlert.mode == 3)
+	if (currentAlert.mode == Alert::Mode::InfoConfirm ||
+	    currentAlert.mode == Alert::Mode::ConfirmCancel)
 	{
 		return;
 	}
@@ -943,6 +1004,7 @@ static bool GetBool(const char s[], bool &rslt)
 static void StartReceivedMessage();
 static void EndReceivedMessage();
 static void ProcessReceivedValue(StringRef id, const char data[], const size_t indices[]);
+static void ProcessArrayElementEnd(const char id[], const size_t index);
 static void ProcessArrayEnd(const char id[], const size_t indices[]);
 static void ParserErrorEncountered(int currentState, const char*, int errors);
 
@@ -950,6 +1012,7 @@ static struct SerialIo::SerialIoCbs serial_cbs = {
 	.StartReceivedMessage = StartReceivedMessage,
 	.EndReceivedMessage = EndReceivedMessage,
 	.ProcessReceivedValue = ProcessReceivedValue,
+	.ProcessArrayElementEnd = ProcessArrayElementEnd,
 	.ProcessArrayEnd = ProcessArrayEnd,
 	.ParserErrorEncountered = ParserErrorEncountered
 };
@@ -959,7 +1022,15 @@ static void StartReceivedMessage()
 	newMessageSeq = messageSeq;
 	MessageLog::BeginNewMessage();
 	FileManager::BeginNewMessage();
-	currentAlert.flags.Clear();
+	currentAlert.Reset();
+
+	thumbnailNew.Init();
+	if (thumbnailCurrent.state == ThumbnailState::Init)
+	{
+		filenameCurrent.Clear();
+		thumbnailCurrent.Init();
+		memset(&thumbnailData, 0, sizeof(thumbnailData));
+	}
 }
 
 static void EndReceivedMessage()
@@ -981,6 +1052,72 @@ static void EndReceivedMessage()
 		MessageLog::DisplayNewMessage();
 	}
 	FileManager::EndReceivedMessage();
+
+	// alert event handling
+	if (currentAlert.flags.IsBitSet(Alert::GotMode) && currentAlert.mode == Alert::Mode::None)
+	{
+		UI::ClearAlert();
+	}
+	else if (currentAlert.mode != Alert::Mode::None && currentAlert.seq != lastAlertSeq)
+	{
+		UI::ProcessAlert(currentAlert);
+		lastAlertSeq = currentAlert.seq;
+	}
+
+	if (thumbnailCurrent.parseErr != 0 || thumbnailCurrent.err != 0)
+	{
+		dbg("thumbnail parseErr %d err %d.\n",
+			thumbnailCurrent.parseErr,
+			thumbnailCurrent.err);
+		thumbnailCurrent.state = ThumbnailState::Init;
+	}
+#if DEBUG
+	if (thumbnailCurrent.thumbnail.imageFormat != Thumbnail::ImageFormat::Invalid)
+	{
+		dbg("filename '%s' offset %d size %d format %d width %d height %d\n",
+			filenameCurrent.c_str(),
+			thumbnailCurrent.offset, thumbnailCurrent.size,
+			thumbnailCurrent.thumbnail.imageFormat,
+			thumbnailCurrent.thumbnail.width, thumbnailCurrent.thumbnail.height);
+	}
+#endif
+	int ret;
+
+	switch (thumbnailCurrent.state) {
+	case ThumbnailState::Init:
+	case ThumbnailState::DataRequest:
+	case ThumbnailState::DataWait:
+		break;
+	case ThumbnailState::Header:
+		if (!ThumbnailIsValid(thumbnailCurrent.thumbnail))
+		{
+			dbg("thumbnail meta invalid.\n");
+			break;
+		}
+		thumbnailCurrent.state = ThumbnailState::DataRequest;
+		break;
+	case ThumbnailState::Data:
+		if (!ThumbnailDataIsValid(thumbnailData))
+		{
+			dbg("thumbnail meta or data invalid.\n");
+			thumbnailCurrent.state = ThumbnailState::Init;
+			break;
+		}
+		if ((ret = ThumbnailDecodeChunk(thumbnailCurrent.thumbnail, thumbnailData, UI::UpdateFileThumbnailChunk)) < 0)
+		{
+			dbg("failed to decode thumbnail chunk %d.\n", ret);
+			thumbnailCurrent.state = ThumbnailState::Init;
+			break;
+		}
+		if (thumbnailCurrent.next == 0)
+		{
+			thumbnailCurrent.state = ThumbnailState::Init;
+		} else
+		{
+			thumbnailCurrent.state = ThumbnailState::DataRequest;
+		}
+		break;
+	}
 }
 
 void HandleOutOfBufferResponse()
@@ -1000,7 +1137,7 @@ void HandleOutOfBufferResponse()
 		pollIntervalMultiplier += 0.1;
 		UpdatePollRate(screensaverActive);
 		oobCounter = 0;
-		MessageLog::AppendMessage("Info: slowing down poll rate");
+		MessageLog::AppendMessage(MessageLog::LogLevel::Normal, "Info: slowing down poll rate");
 	}
 	lastOutOfBufferResponse = now;
 	outOfBuffers = true;
@@ -1326,6 +1463,16 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 		}
 		break;
 
+	case rcvMoveAxesMax:
+		{
+			float val;
+			if (GetFloat(data, val))
+			{
+				UI::SetAxisMax(indices[0], val);
+			}
+		}
+		break;
+
 	case rcvMoveAxesUserPosition:
 		{
 			float fval;
@@ -1565,13 +1712,15 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 		break;
 
 	case rcvStateMessageBoxMode:
-		if (GetInteger(data, currentAlert.mode))
+		int32_t value;
+		if (GetInteger(data, value))
 		{
+			currentAlert.mode = static_cast<Alert::Mode>(value);
 			currentAlert.flags.SetBit(Alert::GotMode);
 		}
 		else
 		{
-			currentAlert.mode = 0;
+			currentAlert.mode = Alert::Mode::None;
 		}
 		break;
 
@@ -1592,6 +1741,46 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 	case rcvStateMessageBoxTitle:
 		currentAlert.title.copy(data);
 		currentAlert.flags.SetBit(Alert::GotTitle);
+		break;
+
+
+	case rcvStateMessageBoxLimitMin:
+		dbg("received limit min index %d data %s\r\n", indices[0], data);
+		{
+			GetInteger(data, currentAlert.limits.numberInt.min);
+			GetFloat(data, currentAlert.limits.numberFloat.min);
+			GetInteger(data, currentAlert.limits.text.min);
+		}
+		break;
+	case rcvStateMessageBoxLimitMax:
+		dbg("received limit max index %d data %s\r\n", indices[0], data);
+		{
+			GetInteger(data, currentAlert.limits.numberInt.max);
+			GetFloat(data, currentAlert.limits.numberFloat.max);
+			GetInteger(data, currentAlert.limits.text.max);
+		}
+		break;
+	case rcvStateMessageBoxValueDefault:
+		dbg("received value default index %d data %s\r\n", indices[0], data);
+		{
+			GetInteger(data, currentAlert.limits.numberInt.valueDefault);
+			GetFloat(data, currentAlert.limits.numberFloat.valueDefault);
+			currentAlert.limits.text.valueDefault.copy(data);
+		}
+		break;
+	case rcvStateMessageBoxCancelButton:
+		dbg("received cancel button index %d data %s\r\n", rde, indices[0], data);
+		GetBool(data, currentAlert.cancelButton);
+		break;
+	case rcvStateMessageBoxChoices:
+		dbg("received message box choice %d index %d data %s\r\n", rde, indices[0], data);
+		if (indices[0] >= ARRAY_SIZE(currentAlert.choices))
+		{
+			dbg("too many choices %d\n", indices[0]);
+			break;
+		}
+		currentAlert.choices[indices[0]].copy(data);
+		currentAlert.choices_count = indices[0] + 1;
 		break;
 
 	case rcvStateStatus:
@@ -1800,6 +1989,8 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 		}
 		break;
 	case rcvM36Filename:
+		filenameCurrent.copy(data);
+		dbg("filename current '%s'\n", filenameCurrent.c_str());
 		break;
 
 	case rcvM36GeneratedBy:
@@ -1851,6 +2042,88 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 		}
 		break;
 
+	case rcvM36ThumbnailsFormat:
+		thumbnailNew.thumbnail.imageFormat = Thumbnail::ImageFormat::Invalid;
+		if (strcmp(data, "qoi") == 0)
+		{
+			thumbnailNew.thumbnail.imageFormat = Thumbnail::ImageFormat::Qoi;
+
+			thumbnailNew.state = ThumbnailState::Header;
+			dbg("thumbnail header.\n");
+		}
+		break;
+	case rcvM36ThumbnailsHeight:
+		uint32_t height;
+		if (GetUnsignedInteger(data, height))
+		{
+			thumbnailNew.thumbnail.height = height;
+			dbg("thumbnail height %d '%s'.\n", height, data);
+		}
+		break;
+	case rcvM36ThumbnailsOffset:
+		uint32_t offset;
+		if (GetUnsignedInteger(data, offset))
+		{
+			thumbnailNew.next = offset;
+			dbg("receive initial offset %d.\n", offset);
+		}
+		break;
+	case rcvM36ThumbnailsSize:
+		uint32_t size;
+		if (GetUnsignedInteger(data, size))
+		{
+			thumbnailNew.size = size;
+			dbg("thumbnail size %d.\n", size);
+		}
+		break;
+	case rcvM36ThumbnailsWidth:
+		uint32_t width;
+		if (GetUnsignedInteger(data, width))
+		{
+			thumbnailNew.thumbnail.width = width;
+			dbg("thumbnail width %d '%s'.\n", width, data);
+		}
+		break;
+
+	case rcvM361ThumbnailData:
+		thumbnailData.size = std::min(strlen(data), sizeof(thumbnailData.buffer));
+		memcpy(thumbnailData.buffer, data, thumbnailData.size);
+		thumbnailCurrent.state = ThumbnailState::Data;
+		dbg("thumbnail data.\n");
+		break;
+	case rcvM361ThumbnailErr:
+		if (!GetInteger(data, thumbnailCurrent.err))
+		{
+			thumbnailCurrent.parseErr = -1;
+			dbg("thumbnail error.\n");
+		}
+		break;
+	case rcvM361ThumbnailFilename:
+		if (!filenameCurrent.Equals(data))
+		{
+			thumbnailCurrent.parseErr = -2;
+			dbg("thumbnail error filename.\n");
+		}
+		break;
+	case rcvM361ThumbnailNext:
+		if (!GetUnsignedInteger(data, thumbnailCurrent.next))
+		{
+			thumbnailCurrent.parseErr = -3;
+			dbg("thumbnail error next.\n");
+			break;
+		}
+		dbg("receive next offset %d.\n", thumbnailCurrent.next);
+		break;
+	case rcvM361ThumbnailOffset:
+		if (!GetUnsignedInteger(data, thumbnailNew.offset))
+		{
+			thumbnailCurrent.parseErr = -4;
+			dbg("thumbnail error offset.\n");
+			break;
+		}
+		dbg("receive current offset %d.\n", thumbnailCurrent.offset);
+		break;
+
 	case rcvControlCommand:
 		{
 			const ControlCommandMapEntry key = (ControlCommandMapEntry) {data, ControlCommand::invalid};
@@ -1865,6 +2138,7 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 			switch (controlCommand)
 			{
 			case ControlCommand::eraseAndReset:
+				UI::ShowFirmwareUpdatePopup();
 				EraseAndReset();					// Does not return
 				break;
 			case ControlCommand::reset:
@@ -1880,6 +2154,30 @@ static void ProcessReceivedValue(StringRef id, const char data[], const size_t i
 	default:
 		break;
 	}
+}
+
+static void ProcessArrayElementEnd(const char id[], const size_t index)
+{
+	//dbg("id %s index %lu\r\n", id, index);
+	UNUSED(index);
+
+	// check if new thumbnail fits better
+	if ((strcmp(id, "thumbnails^") == 0) && ThumbnailIsValid(thumbnailNew.thumbnail))
+	{
+		if (thumbnailCurrent.thumbnail.height < thumbnailNew.thumbnail.height &&
+		    thumbnailNew.thumbnail.height <= fpThumbnail->GetHeight() &&
+		    thumbnailCurrent.thumbnail.width < thumbnailNew.thumbnail.width &&
+		    thumbnailNew.thumbnail.width <= fpThumbnail->GetWidth())
+		{
+			dbg("setting new thumbnail %d/%d\r\n", fpThumbnail->GetWidth(), fpThumbnail->GetWidth());
+			thumbnailCurrent = thumbnailNew;
+		} else {
+			dbg("error thumbnail invalid\r\n");
+		}
+		thumbnailNew.Init();
+	}
+
+	return;
 }
 
 // Public function called when the serial I/O module finishes receiving an array of values
@@ -1961,7 +2259,7 @@ static void ParserErrorEncountered(int currentState, const char*, int errors)
 
 	if (errors > parserMinErrors)
 	{
-		MessageLog::AppendMessageF("Warning: received %d malformed responses.", errors);
+		MessageLog::AppendMessageF(MessageLog::LogLevel::Normal, "Warning: received %d malformed responses.", errors);
 	}
 	if (currentRespSeq == nullptr)
 	{
@@ -2072,6 +2370,8 @@ int main(void)
 
 	lastTouchTime = SystemTick::GetTickCount();
 
+	MessageLog::LogLevelSet(nvData.GetLogLevel());
+
 	firmwareFeatures = firmwareTypes[0].features;		// assume RepRapFirmware until we hear otherwise
 
 	// configure hardware for buzzer and backlight
@@ -2173,7 +2473,7 @@ int main(void)
 	dbg("basic init DONE\n");
 
 
-	MessageLog::AppendMessage("Info: successfully initialized.");
+	MessageLog::AppendMessage(MessageLog::LogLevel::Normal, "Info: successfully initialized.");
 
 	struct TouchEvent {
 		uint32_t x;
@@ -2240,8 +2540,7 @@ int main(void)
 		}
 
 		// check for new alert
-		if (currentAlert.AllFlagsSet() &&
-		    currentAlert.mode >= 0 &&
+		if (currentAlert.mode != Alert::Mode::None &&
 		    currentAlert.seq != lastAlertSeq)
 		{
 			dbg("message updated last action time\n");
@@ -2325,17 +2624,6 @@ int main(void)
 			}
 		}
 
-		// alert event handling
-		if (currentAlert.flags.IsBitSet(Alert::GotMode) && currentAlert.mode < 0)
-		{
-			UI::ClearAlert();
-		}
-		else if (currentAlert.AllFlagsSet() && currentAlert.seq != lastAlertSeq)
-		{
-			UI::ProcessAlert(currentAlert);
-			lastAlertSeq = currentAlert.seq;
-		}
-
 		// refresh the display
 		UpdateDebugInfo();
 		mgr.Refresh(false);
@@ -2357,6 +2645,18 @@ int main(void)
 		// printer communication handling
 		UpdatePollRate(screensaverActive);
 
+#if DEBUG
+		static enum ThumbnailState stateOld = ThumbnailState::Init;
+
+		if (stateOld != thumbnailCurrent.state)
+		{
+			dbg("thumbnail state %d -> %d.\n",
+					stateOld, thumbnailCurrent.state);
+			stateOld = thumbnailCurrent.state;
+		}
+#endif
+
+
 		if (!UI::IsSetupTab())
 		{
 
@@ -2366,38 +2666,50 @@ int main(void)
 			}
 			else if (lastResponseTime >= lastPollTime &&
 			    (now > lastPollTime + printerPollInterval ||
-			     !initialized))
+			     !initialized ||
+			     thumbnailCurrent.state == ThumbnailState::DataRequest))
 			{
-				currentReqSeq = GetNextSeq(currentReqSeq);
-				if (currentReqSeq != nullptr)
+				if (thumbnailCurrent.state == ThumbnailState::DataRequest)
 				{
-					dbg("requesting %s\n", currentReqSeq->key);
-					SerialIo::Sendf("M409 K\"%s\" F\"%s\"\n", currentReqSeq->key, currentReqSeq->flags);
+					SerialIo::Sendf("M36.1 P\"%s\" S%d\n",
+						filenameCurrent.c_str(),
+						thumbnailCurrent.next);
 					lastPollTime = SystemTick::GetTickCount();
+					thumbnailCurrent.state = ThumbnailState::DataWait;
 				}
 				else
 				{
-					// Once we get here the first time we will have work all seqs once
-					if (!initialized)
+					currentReqSeq = GetNextSeq(currentReqSeq);
+					if (currentReqSeq != nullptr)
 					{
-						dbg("seqs init DONE\n");
-						UI::AllToolsSeen();
-						initialized = true;
+						dbg("requesting %s\n", currentReqSeq->key);
+						SerialIo::Sendf("M409 K\"%s\" F\"%s\"\n", currentReqSeq->key, currentReqSeq->flags);
+						lastPollTime = SystemTick::GetTickCount();
 					}
+					else
+					{
+						// Once we get here the first time we will have work all seqs once
+						if (!initialized)
+						{
+							dbg("seqs init DONE\n");
+							UI::AllToolsSeen();
+							initialized = true;
+						}
 
-					// check if specific info is needed
-					bool sent = false;
-					if (OkToSend())
-					{
-						sent = FileManager::ProcessTimers();
-					}
+						// check if specific info is needed
+						bool sent = false;
+						if (OkToSend())
+						{
+							sent = FileManager::ProcessTimers();
+						}
 
-					// if nothing was fetched do a status update
-					if (!sent)
-					{
-						SerialIo::Sendf("M409 F\"d99f\"\n");
+						// if nothing was fetched do a status update
+						if (!sent)
+						{
+							SerialIo::Sendf("M409 F\"d99f\"\n");
+						}
+						lastPollTime = SystemTick::GetTickCount();
 					}
-					lastPollTime = SystemTick::GetTickCount();
 				}
 			}
 			else if (now > lastPollTime + printerPollInterval + printerResponseTimeout)	  // request timeout

@@ -3,6 +3,7 @@
 
 #include "FlashData.hpp"
 #include "Icons/Icons.hpp"
+#include "General/SimpleMath.h"
 #include "General/String.h"
 #include "UI/Alert.hpp"
 #include "UI/ColourSchemes.hpp"
@@ -28,30 +29,48 @@ class AlertPopup : public StandardPopupWindow
 public:
 	AlertPopup(const ColourScheme& colours);
 	void Set(const char *title, const char *text, int32_t mode, uint32_t controls);
+	void Set(const Alert &alert);
 	void ChangeLetter(const size_t index);
+
+	void UpdateData(const char *data);
+	void ProcessOkButton();
+	void ProcessChoice(uint32_t choice);
+
+	bool Validate(int value);
+	bool Validate(float value);
+	bool Validate(const char *value);
 
 private:
 	String<alertTitleLength> alertTitle;
 	String<alertTextLength/3> alertText1, alertText2, alertText3;
 
+	String<alertTextLength/3> warningText;
+	StaticTextField *warning;
+
+	String<2> driveLetter;
+
+	String<32> okCommand;
+	String<32> cancelCommand;
+
 	TextButton *okButton;
 	TextButton *cancelButton;
 
-	struct AxisMap {
-		const char *letter;
-		TextButton *button;
-	} axisMap[10] = {
-		{ .letter = "X", .button = nullptr },
-		{ .letter = "Y", .button = nullptr },
-		{ .letter = "Z", .button = nullptr },
-		{ .letter = "U", .button = nullptr },
-		{ .letter = "V", .button = nullptr },
-		{ .letter = "W", .button = nullptr },
-		{ .letter = "A", .button = nullptr },
-		{ .letter = "B", .button = nullptr },
-		{ .letter = "C", .button = nullptr },
-		{ .letter = "D", .button = nullptr },
+	bool showCancelButton;
+
+	TextButton *axisMap[10] = {
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
+		nullptr,
 	};
+
+	StaticTextField *driveLetterField;
 
 	struct DirMap {
 		const char *text;
@@ -64,8 +83,20 @@ private:
 		{ .text = MORE_ARROW "0.02", .param = "0.02", .button = nullptr },
 		{ .text = MORE_ARROW "0.2", .param = "0.2", .button = nullptr },
 		{ .text = MORE_ARROW "2.0", .param = "2.0", .button = nullptr },
-};
+	};
 
+	struct {
+		TextButton *button;
+		String<32> text;
+	} selectionMap[10];
+	String<32> valueText;
+	TextButton *value;
+
+	static_assert(ARRAY_SIZE(Alert::choices) == ARRAY_SIZE(selectionMap));
+
+	uint32_t seq;
+	Alert::Mode mode;
+	Alert::Limits limits;
 };
 
 #endif /* ifndef SRC_UI_POPUP_HPP_ */

@@ -9,21 +9,14 @@
 #include "Hardware/SysTick.hpp"
 #include "asf.h"
 #include "PanelDue.hpp"
+#include <General/CRC16.h>
 #include <General/String.h>
 #include <General/SafeVsnprintf.h>
 
-#define DEBUG (0)
+#define DEBUG 0
+#include "Debug.hpp"
 
-#if DEBUG
-# include "UI/MessageLog.hpp"
-#define dbg(fmt, args...)		do { MessageLog::AppendMessageF("%s(%d): " fmt , __FUNCTION__, __LINE__, ##args); } while(0)
-
-#else
-# define dbg(fmt, args...)		do {} while(0)
-
-#endif
-
-const size_t MaxArrayNesting = 4;
+const size_t MaxArrayNesting = 6;
 
 #if SAM4S
 # define UARTn	UART0
@@ -35,6 +28,16 @@ const size_t MaxArrayNesting = 4;
 namespace SerialIo
 {
 	static unsigned int lineNumber = 0;
+	uint16_t numChars = 0;
+	uint8_t checksum = 0;
+	CRC16 crc;
+
+	enum CheckType {
+		None,
+		Simple,
+		CRC16
+	} check;
+
 
 	static struct SerialIoCbs *cbs = nullptr;
 	static int serialIoErrors = 0;
@@ -66,6 +69,8 @@ namespace SerialIo
 	{
 		cbs = callbacks;
 
+		check = CheckType::CRC16;
+
 		uart_disable_interrupt(UARTn, 0xFFFFFFFF);
 #if SAM4S
 		pio_configure(PIOA, PIO_PERIPH_A, PIO_PA9 | PIO_PA10, 0);	// enable UART 0 pins
@@ -90,21 +95,39 @@ namespace SerialIo
 		Init(baudRate, cbs);
 	}
 
-
-	uint16_t numChars = 0;
-	uint8_t checksum = 0;
+	void SetCRC16(bool enable)
+	{
+		if (enable)
+		{
+			check = CheckType::CRC16;
+		}
+		else
+		{
+			check = CheckType::Simple;
+		}
+	}
 
 	// Send a character to the 3D printer.
 	// A typical command string is only about 12 characters long, which at 115200 baud takes just over 1ms to send.
 	// So there is no particular reason to use interrupts, and by so doing so we avoid having to handle buffer full situations.
-	void RawSendChar(char c)
+	static void RawSendChar(char c)
 	{
 		while(uart_write(UARTn, c) != 0) { }
 	}
 
-	void SendCharAndChecksum(char c)
+	static void SendCharAndChecksum(char c)
 	{
-		checksum ^= c;
+		switch (check)
+		{
+		case CheckType::None:
+			break;
+		case CheckType::Simple:
+			checksum ^= c;
+			break;
+		case CheckType::CRC16:
+			crc.Update(c);
+			break;
+		}
 		RawSendChar(c);
 		++numChars;
 	}
@@ -116,18 +139,39 @@ namespace SerialIo
 		{
 			if (numChars != 0)
 			{
-				// Send the checksum
-				RawSendChar('*');
-				char digit0 = checksum % 10 + '0';
-				checksum /= 10;
-				char digit1 = checksum % 10 + '0';
-				checksum /= 10;
-				if (checksum != 0)
+				switch (check)
 				{
-					RawSendChar(checksum + '0');
+				case CheckType::None:
+					break;
+				case CheckType::Simple:
+					{
+						// Send the checksum
+						RawSendChar('*');
+						char digit0 = checksum % 10 + '0';
+						checksum /= 10;
+						char digit1 = checksum % 10 + '0';
+						checksum /= 10;
+						if (checksum != 0)
+						{
+							RawSendChar(checksum + '0');
+						}
+						RawSendChar(digit1);
+						RawSendChar(digit0);
+					}
+					break;
+				case CheckType::CRC16:
+					{
+						uprintf([](char c) noexcept -> bool {
+								if (c != 0)
+								{
+								RawSendChar(c);
+								}
+								return true;
+							}, "*%05d", crc.Get());
+						crc.Reset(0);
+					}
+					break;
 				}
-				RawSendChar(digit1);
-				RawSendChar(digit0);
 			}
 			RawSendChar(c);
 			numChars = 0;
@@ -137,6 +181,7 @@ namespace SerialIo
 			if (numChars == 0)
 			{
 				checksum = 0;
+				crc.Reset(0);
 				// Send a dummy line number
 				SendCharAndChecksum('N');
 				Sendf("%d", lineNumber++);			// numChars is no longer zero, so only recurses once
@@ -230,8 +275,8 @@ namespace SerialIo
 	JsonState lastState = jsBegin;
 
 	// fieldId is the name of the field being received. A '^' character indicates the position of an _ecv_array index, and a ':' character indicates a field separator.
-	String<100> fieldId;
-	String<300> fieldVal;	// long enough for about 6 lines of message
+	String<150> fieldId;
+	String<1028> fieldVal;
 	size_t arrayIndices[MaxArrayNesting];
 	size_t arrayDepth = 0;
 
@@ -281,6 +326,16 @@ namespace SerialIo
 			cbs->ProcessReceivedValue(fieldId.GetRef(), fieldVal.c_str(), arrayIndices);
 		}
 		fieldVal.Clear();
+	}
+
+	static void EndArrayElement(const char *id, size_t index)
+	{
+		dbg("id %s index %lu\r\n", id, index);
+
+		if (cbs && cbs->ProcessArrayElementEnd)
+		{
+			cbs->ProcessArrayElementEnd(id, index);
+		}
 	}
 
 	static void EndArray()
@@ -425,6 +480,8 @@ namespace SerialIo
 			}
 			if (InArray())
 			{
+				EndArrayElement(fieldId.c_str(), arrayIndices[arrayDepth - 1]);
+
 				++arrayIndices[arrayDepth - 1];
 				fieldVal.Clear();
 				state = jsVal;
@@ -443,6 +500,8 @@ namespace SerialIo
 				{
 					ProcessField();
 				}
+				EndArrayElement(fieldId.c_str(), arrayIndices[arrayDepth - 1]);
+
 				++arrayIndices[arrayDepth - 1];
 				EndArray();
 				state = jsEndVal;

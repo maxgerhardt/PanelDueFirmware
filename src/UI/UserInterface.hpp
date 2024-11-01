@@ -9,6 +9,7 @@
 #define SRC_UI_USERINTERFACE_HPP_
 
 #include "FirmwareFeatures.hpp"
+#include "Library/Thumbnail.hpp"
 #include <ObjectModel/BedOrChamber.hpp>
 #include <ObjectModel/PrinterStatus.hpp>
 #include <ObjectModel/Spindle.hpp>
@@ -17,6 +18,7 @@
 #include <UI/ColourSchemes.hpp>
 #include <UI/Display.hpp>
 #include <UI/Events.hpp>
+#include <UI/Strings.hpp>
 #include <General/String.h>
 #include <General/StringFunctions.h>
 
@@ -26,6 +28,10 @@ extern StaticTextField *debugField;
 extern StaticTextField *touchCalibInstruction;
 extern StaticTextField *messageTextFields[], *messageTimeFields[];
 extern TextField *fwVersionField;
+extern DrawDirect *fpThumbnail;
+
+
+extern const StringTable *strings;
 
 namespace UI
 {
@@ -35,6 +41,7 @@ namespace UI
 	extern void ActivateScreensaver();
 	extern bool DeactivateScreensaver();
 	extern void AnimateScreensaver();
+	extern void ShowFirmwareUpdatePopup();
 	extern void ShowAxis(size_t axis, bool b, const char* axisLetter = nullptr);
 	extern void UpdateAxisPosition(size_t axis, float fval);
 	extern void UpdateCurrentTemperature(size_t heater, float fval);
@@ -44,7 +51,6 @@ namespace UI
 	extern void UpdateDuration(uint32_t duration);
 	extern void UpdateWarmupDuration(uint32_t warmupDuration);
 	extern void SetSimulatedTime(uint32_t simulatedTime);
-	extern bool ChangePage(ButtonBase *newTab);
 	extern bool IsSetupTab();
 	extern void Tick();
 	extern void Spin();
@@ -71,6 +77,7 @@ namespace UI
 	extern void UpdateFileLayerHeight(float f);
 	extern void UpdateFileSize(int size);
 	extern void UpdateFileFilament(int len);
+	extern bool UpdateFileThumbnailChunk(const struct Thumbnail &thumbnail, uint32_t pixels_offset, const qoi_rgba_t *pixels, size_t pixels_count);
 	extern void UpdateFanPercent(size_t fanIndex, int rpm);
 	extern void UpdateActiveTemperature(size_t index, int ival);
 	extern void UpdateToolTemp(size_t toolIndex, size_t toolHeaterIndex, int32_t temp, bool active);
@@ -85,7 +92,10 @@ namespace UI
 	extern bool IsDisplayingFileInfo();
 	extern void AllToolsSeen();
 
-	extern void DisplayFilesOrMacrosList(bool filesNotMacros, int cardNumber, unsigned int numVolumes);
+	extern void DisplayFilesPopup(int cardNumber, unsigned int numVolumes);
+	extern void DisplayMacrosPopup();
+
+	extern void FileListCardButtonUpdate(unsigned int numVolumes);
 	extern void FileListLoaded(bool filesNotMacros, int errCode);
 	extern void EnableFileNavButtons(bool filesNotMacros, bool scrollEarlier, bool scrollLater, bool parentDir);
 	extern void UpdateFileButton(bool filesNotMacros, unsigned int buttonIndex, const char * _ecv_array null text, const char * _ecv_array null param);
@@ -94,6 +104,7 @@ namespace UI
 
 	extern void SetBabystepOffset(size_t index, float f);
 	extern void SetAxisLetter(size_t index, char l);
+	extern void SetAxisMax(size_t index, float val);
 	extern void SetAxisVisible(size_t index, bool v);
 	extern void SetAxisWorkplaceOffset(size_t axisIndex, size_t workplaceIndex, float offset);
 	extern void SetCurrentWorkplaceNumber(uint8_t workplaceNumber);

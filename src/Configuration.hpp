@@ -10,6 +10,7 @@
 #define CONFIGURATION_H_
 
 #include <cstdint>
+#include <cstddef>
 
 #define DISPLAY_TYPE_ITDB02_43			(1)		// Itead 4.3 inch display (480 x 272) or alternative 4.3 inch display with 24-bit colour
 #define DISPLAY_TYPE_ITDB02_50			(2)		// Itead 5.0 inch display (800 x 480) or alternative 5 or 7 inch display with 24-bit colour
@@ -55,6 +56,7 @@
 #endif
 
 #define USE_CYRILLIC_CHARACTERS		(1)
+#define USE_JAPANESE_CHARACTERS		(0)
 
 const uint32_t DefaultBaudRate = 57600;
 const uint32_t DimDisplayTimeout = 60000;				// dim this display after no activity for this number of milliseconds
@@ -65,5 +67,7 @@ const uint8_t DefaultBabystepAmountIndex = 1;			// default babystep amount of 0.
 const uint16_t DefaultFeedrate = 6000;					// default feedrate in mm/min
 
 const uint32_t MinimumEncoderCommandInterval = 100;		// minimum time in milliseconds between serial commands sent due to encoder movement
+
+const size_t MaxFilnameLength = 120;
 
 #endif /* CONFIGURATION_H_ */

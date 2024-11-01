@@ -15,7 +15,9 @@
 #undef result
 #undef value
 #include "UI/ColourSchemes.hpp"
+#include "UI/MessageLog.hpp"
 #include "ObjectModel/PrinterStatus.hpp"
+#include "FlashData.hpp"
 #include "Configuration.hpp"
 
 #define CSTRING const char * const _ecv_array
@@ -102,6 +104,7 @@ struct StringTable
 	CSTRING messages;
 	CSTRING firmwareVersion;
 	CSTRING response;
+	CSTRING noFilesFound;
 
 	// File popup
 	CSTRING filesOnCard;
@@ -129,7 +132,11 @@ struct StringTable
 	CSTRING displayDimmingNames[(unsigned int)DisplayDimmerType::NumTypes];
 
 	CSTRING heaterCombineTypeNames[(unsigned int)HeaterCombineType::NumTypes];
+	CSTRING logLevelNames[(unsigned int)MessageLog::LogLevel::NumTypes];
 
+	CSTRING outOfRangeValueInt;
+	CSTRING outOfRangeValueFloat;
+	CSTRING outOfRangeTextLength;
 };
 
 const StringTable LanguageTables[] =
@@ -203,19 +210,20 @@ const StringTable LanguageTables[] =
 		"Messages",
 		"Panel Due firmware version ",	// note space at end
 		"Response",
+		"No files found",
 
 		// File popup
 		"Files on card ",				// note the space on the end
 		"Macros",
 		"Error ",						// note the space at the end
 		" accessing SD card",			// note the space at the start
-		"Filename: ",
+		"File: ",
 		"Size: ",
 		"Layer height: ",
 		"Object height: ",
 		"Filament needed: ",
 		"Sliced by: ",
-		"Last modified: ",
+		"Date: ",
 		"Estimated print time: ",
 		"Simulated print time: ",
 		"Simulate",
@@ -256,7 +264,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
  	},
 
 	// German
@@ -328,19 +346,20 @@ const StringTable LanguageTables[] =
 		"Nachrichten",
 		"Panel Due Firmwareversion ",	// note space at end
 		"Antwort",
+		"Keine Dateien gefunden",
 
 		// File popup
 		"Dateien auf Karte ",			// note the space on the end
 		"Makros",
 		"Fehler ",						// note the space at the end
 		" beim Zugriff auf SD-Karte",	// note the space at the start
-		"Dateiname: ",
+		"Datei: ",
 		"Größe: ",
 		"Schichthöhe: ",
 		"Objekthöhe: ",
 		"Benötigtes Filament: ",
 		"Erzeugt mit: ",
-		"Letzte Änderung: ",
+		"Datum: ",
 		"Geschätzte Druckdauer: ",
 		"Simulierte Druckdauer: ",
 		"Simulieren",
@@ -381,7 +400,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's nicht komb.",
 			"Heat's kombiniert"
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	},
 
 	// French
@@ -453,19 +482,20 @@ const StringTable LanguageTables[] =
 		"Messages",
 		"Version du firmware du Panel Due ",	// note space at end
 		"Réponse",
+		"No files found",
 
 		// File popup
 		"Fichier sur la carte ",					// note the space on the end
 		"Macros",
 		"Erreur ",								// note the space at the end
 		" accés à la carte SD en cours",				// note the space at the start
-		"Nom du fichier : ",
-		"Taille : ",
+		"Fichier: ",
+		"Taille: ",
 		"Hauteur de couche: ",
 		"Hauteur de l'objet: ",
 		"Filament requis: ",
 		"Slicé par: ",
-		"Dernière modification: ",
+		"Date: ",
 		"Temps d'impression estimé: ",
 		"Temps d'impression simulé: ",
 		"Simuler",
@@ -506,7 +536,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	},
 
 	// Spanish
@@ -578,6 +618,7 @@ const StringTable LanguageTables[] =
 		"Mensajes",
 		"Versión del Firmware del Panel Due ",	// note space at end
 		"Respuesta",
+		"No files found",
 
 		// File popup
 		"Archivos SD ",			// note the space on the end
@@ -631,7 +672,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	},
 
 	// Czech
@@ -703,6 +754,7 @@ const StringTable LanguageTables[] =
 		"Zprávy",
 		"Verze firmware Panel Due ",	// note space at end
 		"Odpověď",
+		"No files found",
 
 		// File popup
 		"Soubory na kartě ",			// note the space on the end
@@ -756,7 +808,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	},
 
 	// Italian
@@ -828,6 +890,7 @@ const StringTable LanguageTables[] =
 		"Messaggi",
 		"Versione firmware Panel Due ",	// note space at end
 		"Risposta",
+		"No files found",
 
 		// File popup
 		"File su card ",				// note the space on the end
@@ -881,8 +944,292 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
+	},
+
+
+	// dutch
+	{
+		// ISO-639.1 language code
+		"nl",
+
+		// Main page strings
+		"Controle",
+		"Print",
+		"Status",
+		"Console",
+		"Instellingen",
+		"Huidig" THIN_SPACE DEGREE_SYMBOL "C",
+		"Actief" THIN_SPACE DEGREE_SYMBOL "C",
+		"Stand-by" THIN_SPACE DEGREE_SYMBOL "C",
+		"Beweeg",
+		"Extrusie",
+		"Macro",
+		"STOP",
+
+		// Print page
+		"Extruder" THIN_SPACE "%",
+		"Snelheid  ",							// note space at end
+		"Ventilator  ",							// note space at end
+		"Benodigde tijd: ",
+		"sim'd ",							// note space at end
+		"Bestand  ",							// note space at end
+		"filament ",						// note space at end
+		"slicer ",							// note space at end
+		"N/A",
+		"Pause",
+		"Baby step",
+		"Hervatten",
+		"Annuleren",
+		"Print opnieuw",
+		"Simuleer opnieuw",
+		"Set",
+
+		// Setup page
+		"Volume ",							// note space at end
+		"Kalibreer scherm",
+		"Spiegel display",
+		"Omkeren display",
+		"Thema",
+		"Helderheid -",
+		"Helderheid +",
+		"Bewaar instellingen",
+		"Verwijder instellingen",
+		"Opslaan en herstart",
+		"Info time-out ",					// note space at end
+		"Screensaver ",						// note space at end
+		"Baby step ",						// note space at end
+		"Aanvoer snelheid ",					// note space at end
+
+		// Misc
+		"Bevestig fabrieksinstellingen",
+		"Bevestig verwijderen bestand",
+		"Weet je het zeker?",
+		"Aanraken punt",
+		"Beweeg printkop",
+		"Extrusie hoeveelheid (mm)",
+		"Snelheid (mm/s)",
+		"Extruderen",
+		"Intrekken",
+		"Baby stapjes",
+		"Actuele Z offset: ",
+		"Bericht",
+		"Berichten",
+		"Panel Due firmware versie ",	// note space at end
+		"Antwoord",
+		"No files found",
+
+		// File popup
+		"Bestanden op kaart ",				// note the space on the end
+		"Macros",
+		"Error ",						// note the space at the end
+		" toegang SD kaart",			// note the space at the start
+		"File: ",
+		"Grootte: ",
+		"Laaghoogte: ",
+		"Object hoogte: ",
+		"Benodigd filament: ",
+		"Sliced door: ",
+		"Date: ",
+		"Geschatte printtijd: ",
+		"Gesimuleerde printtijd: ",
+		"Simulatie",
+
+		// Printer status strings
+		{
+			"Verbinden",
+			"Inactief",
+			"Printen",
+			"Gestopt",
+			"Opstarten",
+			"Gepauzeerd",
+			"Bezig",
+			"Pauzeren",
+			"Hervatten",
+			"Firmware upload",
+			"Veranderen tool",
+			"Simuleren",
+			"Off",
+			"Cancelling",
+		},
+
+		// Theme names
+		{
+			"Licht thema",
+			"Donker thema 1",
+			"Donker thema 2"
+		},
+
+		// Display dimming types
+		{
+			"Nooit dimmen",
+			"Dim bij inactief",
+			"Altijd dimmen"
+		},
+
+		// Heater combine types
+		{
+			"Heat niet comb.",
+			"Heat comb.",
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
  	},
+
+	// Polish
+	{
+		// ISO-639.3 language code
+		"pl",
+
+		// Main page strings
+		"Str.główna",
+		"Druk",
+		"Status",
+		"Konsola",
+		"Ustawienia",
+		"Aktualna" THIN_SPACE DEGREE_SYMBOL "C",
+		"Żądana" THIN_SPACE DEGREE_SYMBOL "C",
+		"Czuwanie" THIN_SPACE DEGREE_SYMBOL "C",
+		"Ruch",
+		"Ekstruzja",
+		"Polecenie",
+		"STOP",
+
+		// Print page
+		"Ekstruzja" THIN_SPACE "%",
+		"Prędkość ",							// note space at end
+		"Nawiew ",								// note space at end
+		"Pozostało:: ",
+		"sim'd ",							// note space at end
+		"plik ",							// note space at end
+		"filament ",						// note space at end
+		"slicer ",							// note space at end
+		"N/A",
+		"Pauza",
+		"Mały krok",
+		"Wznów",
+		"Anuluj",
+		"Drukuj ponownie",
+		"Ponowna symulacja",
+		"Ustaw",
+
+		// Setup page
+		"Głośność ",							// note space at end
+		"Kalibracja",
+		"Wyśw.lustrzane",
+		"Wyśw.odbite",
+		"Motyw",
+		"Jasność -",
+		"Jasność +",
+		"Zapisz ust.",
+		"Wyczyść ust.",
+		"zapisz i uruch.ponow.",
+		"Czas powiad. ",					// note space at end
+		"Wygaszacz ",						// note space at end
+		"Mały krok ",						// note space at end
+		"Prędkość ",						// note space at end
+
+		// Misc
+		"Potwierdź przywrócenie do ustawień fabrycznych.",
+		"Potwierdź usuń.pliku",
+		"Jesteś pewny?",
+		"Dotknij miejsce",
+		"Ruch głowicy",
+		"Ilość filamentu (mm)",
+		"Prędkość (mm/s)",
+		"Ekstruduj",
+		"Retrakuj",
+		"Małe kroki",
+		"Aktualny offset Z : ",
+		"Wiadomość",
+		"Wiadomości",
+		"Panel Due firmware wersja ",	// note space at end
+		"Odpowiedź",
+		"No files found",
+
+		// File popup
+		"Pliki na karcie ",				// note the space on the end
+		"Polecenia",
+		"Błąd ",						// note the space at the end
+		"Otczyt karty SD",			// note the space at the start
+		"Nazwa pliku: ",
+		"Rozmiar: ",
+		"Wysok.warstwy: ",
+		"Wysok.obiektu: ",
+		"Potrzebny filament: ",
+		"Pocięto przez: ",
+		"Ostatnio modyfikowany: ",
+		"Obliczon.czas druku: ",
+		"Przewidyw.czas druku: ",
+		"Symuluj",
+
+		// Printer status strings
+		{
+			"Łączenie",
+			"Bezczynny",
+			"Drukowanie",
+			"Rozpoczynanie",
+			"Uruchamianie",
+			"Pałza",
+			"Zajęty",
+			"Pauzowanie",
+			"Wznawianie",
+			"Przesyłanie firmware",
+			"Zmiana narzędzia",
+			"Symulacja",
+			"Wyłącz",
+			"Anuluj",
+		},
+
+		// Theme names
+		{
+			"Jasny motyw",
+			"Ciemny motyw 1",
+			"Ciemny motyw 2"
+		},
+
+		// Display dimming types
+		{
+			"Nie wygaszaj",
+			"Wygaszaj gdy bezczynny",
+			"Zawsze wygaszaj",
+		},
+
+		// Heater combine types
+		{
+			"Głowica prosta",
+			"Głowica inna",
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
+	},
+
 
 #if USE_CYRILLIC_CHARACTERS
 	// Ukrainian
@@ -953,6 +1300,7 @@ const StringTable LanguageTables[] =
 		"Повідомлення",
 		"Версія прошивки Panel Due ",  // note space at end
 		"Відповідь",
+		"No files found",
 
 		// File popup
 		"Файли на картці ",       // note the space on the end
@@ -1006,7 +1354,17 @@ const StringTable LanguageTables[] =
 		{
 			"Heat's not comb.",
 			"Heaters comb.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	},
 	// Russian
 	{
@@ -1076,6 +1434,7 @@ const StringTable LanguageTables[] =
 		"Сообщения",
 		"Версия прошивки Panel Due ",  // note space at end
 		"Ответ",
+		"No files found",
 
 		// File popup
 		"Файлы на карте ",       // note the space on the end
@@ -1129,7 +1488,154 @@ const StringTable LanguageTables[] =
 		{
 			"Нагреватели не комб.",
 			"Нагреватели комб.",
-		}
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
+	}
+#endif
+#if USE_JAPANESE_CHARACTERS
+	//Japanese
+	{
+		// ISO-639.1 language code
+		"ja",
+
+		// Main page strings
+		"コントロール",
+		"いんさつ",
+		"ステータス",
+		"コンソール",
+		"セットアップ",
+		"Current" THIN_SPACE DEGREE_SYMBOL "C",
+		"Active" THIN_SPACE DEGREE_SYMBOL "C",
+		"Standby" THIN_SPACE DEGREE_SYMBOL "C",
+		"いどう",
+		"おしだし",
+		"マクロ",
+		"ストップ",
+
+		// Print page
+		"Extruder" THIN_SPACE "%",
+		"スピード ",							// note space at end
+		"ファン ",								// note space at end
+		"のこりじかん: ",
+		"sim'd ",							// note space at end
+		"ファイル ",							// note space at end
+		"フィラメント ",						// note space at end
+		"スライサー ",							// note space at end
+		"n/a",
+		"ていし",
+		"Babystep",
+		"さいかい",
+		"キャンセル",
+		"プリント もういちど",
+		"シミュレーション もういちど",
+		"セット",
+
+		// Setup page
+		"おんりょう ",							// note space at end
+		"タッチほせい",
+		"ひょうじはんてん",
+		"ひょうじさかさ",
+		"テーマ",
+		"あかるさ -",
+		"あかるさ +",
+		"せっていほぞん",
+		"せっていしょきょ",
+		"セーブ & リスタート",
+		"Info Timeout ",					// note space at end
+		"Screensaver ",						// note space at end
+		"Babystep ",						// note space at end
+		"おくりそくど ",						// note space at end
+
+		// Misc
+		"ファクトリーリセット",
+		"ファイルさくじょ",
+		"ほんとうにいいですか?",
+		"スポットにタッチ",
+		"ヘッドいどう",
+		"おしだしりょう (mm)",
+		"スピード (mm/s)",
+		"おしだし",
+		"リトラクト",
+		"Babystep",
+		"Zのオフセット: ",
+		"メッセージ",
+		"メッセージ",
+		"Panel Dueファームウェア ",	// note space at end
+		"レスポンス",
+		"No files found",
+
+		// File popup
+		"カードのファイル ",				// note the space on the end
+		"マクロ",
+		"エラー ",						// note the space at the end
+		" SDカードアクセス",			// note the space at the start
+		"ファイル: ",
+		"サイズ: ",
+		"レイヤーたかさ: ",
+		"オブジェクトたかさ ",
+		"ひつようフィラメント: ",
+		"スライサー: ",
+		"Date: ",
+		"よそうプリントじかん: ",
+		"シミュレーションプリントじかん: ",
+		"シミュレーション",
+
+		// Printer status strings
+		{
+			"せつぞくちゅう",
+			"アイドル",
+			"プリントちゅう",
+			"ていしちゅう",
+			"スタートアップ",
+			"ストップ",
+			"ビジー",
+			"いちじていし",
+			"さいかい",
+			"ファームウェアアップロード",
+			"ツールこうかん",
+			"シミュレーション",
+			"オフ",
+			"キャンセルちゅう",
+		},
+
+		// Theme names
+		{
+			"ライトテーマ",
+			"ダークテーマ 1",
+			"ダークテーマ 2"
+		},
+
+		// Display dimming types
+		{
+			"くらくしない",
+			"アイドルじくらく",
+			"つねにくらくする"
+		},
+
+		// Heater combine types
+		{
+			"Heat's not comb.",
+			"Heaters comb.",
+		},
+
+		// LogLevel names
+		{
+			"Normal",
+			"Verbose",
+		},
+
+		"value is out of range: %ld <= value <= %ld",
+		"value is out of range: %f <= value <= %f",
+		"text length is out of range: %ld <= length <= %ld",
 	}
 #endif
 };
