@@ -1,0 +1,6 @@
+{
+    "name": "qoi",
+    "build": {
+        "srcFilter": "-<*>"
+    }
+}
